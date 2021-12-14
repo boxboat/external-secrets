@@ -44,7 +44,7 @@ const (
 )
 
 type Client interface {
-	GetVariable(pid interface{}, key string, options ...gitlab.RequestOptionFunc) (*gitlab.ProjectVariable, *gitlab.Response, error)
+	ListVariables(pid interface{}, opt *gitlab.ListProjectVariablesOptions, options ...gitlab.RequestOptionFunc) ([]*gitlab.ProjectVariable, *gitlab.Response, error)
 }
 
 // Gitlab Provider struct with reference to a GitLab client and a projectID.
@@ -160,29 +160,48 @@ func (g *Gitlab) GetSecret(ctx context.Context, ref esv1alpha1.ExternalSecretDat
 	// 	"variable_type": "env_var",
 	// 	"value": "TEST_1",
 	// 	"protected": false,
-	// 	"masked": true
-	data, _, err := g.client.GetVariable(g.projectID, ref.Key, nil) // Optional 'filter' parameter could be added later
-	if err != nil {
-		return nil, err
-	}
+	// 	"masked": true,
+	// 	"environment_scope": "*"
+	page := 1
 
-	if ref.Property == "" {
-		if data.Value != "" {
-			return []byte(data.Value), nil
+	for {
+		data, resp, err := g.client.ListVariables(g.projectID, &gitlab.ListProjectVariablesOptions{Page: page})
+		if err != nil {
+			return nil, err
 		}
-		return nil, fmt.Errorf("invalid secret received. no secret string for key: %s", ref.Key)
-	}
 
-	var payload string
-	if data.Value != "" {
-		payload = data.Value
-	}
+		if ref.Version == "" {
+			ref.Version = "*"
+		}
 
-	val := gjson.Get(payload, ref.Property)
-	if !val.Exists() {
-		return nil, fmt.Errorf("key %s does not exist in secret %s", ref.Property, ref.Key)
+		for _, v := range data {
+			if v.Key == ref.Key && v.EnvironmentScope == ref.Version {
+				if ref.Property == "" {
+					if v.Value != "" {
+						return []byte(v.Value), nil
+					}
+					return nil, fmt.Errorf("invalid secret received. no secret string for key: %s", ref.Key)
+				}
+
+				var payload string
+				if v.Value != "" {
+					payload = v.Value
+				}
+
+				val := gjson.Get(payload, ref.Property)
+				if !val.Exists() {
+					return nil, fmt.Errorf("key %s does not exist in secret %s", ref.Property, ref.Key)
+				}
+				return []byte(val.String()), nil
+			}
+		}
+
+		if resp.NextPage == 0 {
+			return nil, fmt.Errorf("invalid secret received. no secret string for key: %s", ref.Key)
+		}
+
+		page++
 	}
-	return []byte(val.String()), nil
 }
 
 func (g *Gitlab) GetSecretMap(ctx context.Context, ref esv1alpha1.ExternalSecretDataRemoteRef) (map[string][]byte, error) {

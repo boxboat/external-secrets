@@ -18,11 +18,13 @@ import (
 )
 
 type GitlabMockClient struct {
-	getVariable func(pid interface{}, key string, options ...gitlab.RequestOptionFunc) (*gitlab.ProjectVariable, *gitlab.Response, error)
+	getVariable   func(pid interface{}, key string, options ...gitlab.RequestOptionFunc) (*gitlab.ProjectVariable, *gitlab.Response, error)
+	listVariables func(pid interface{}, opt *gitlab.ListProjectVariablesOptions, options ...gitlab.RequestOptionFunc) ([]*gitlab.ProjectVariable, *gitlab.Response, error)
 }
 
-func (mc *GitlabMockClient) GetVariable(pid interface{}, key string, options ...gitlab.RequestOptionFunc) (*gitlab.ProjectVariable, *gitlab.Response, error) {
-	return mc.getVariable(pid, key, nil)
+func (mc *GitlabMockClient) ListVariables(pid interface{}, opt *gitlab.ListProjectVariablesOptions, options ...gitlab.RequestOptionFunc) ([]*gitlab.ProjectVariable, *gitlab.Response, error) {
+	page := 1
+	return mc.listVariables(pid, &gitlab.ListProjectVariablesOptions{Page: page})
 }
 
 func (mc *GitlabMockClient) WithValue(projectIDinput, keyInput string, output *gitlab.ProjectVariable, err error) {
